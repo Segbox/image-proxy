@@ -1,29 +1,48 @@
 const express = require('express');
 const fetch = require('node-fetch');
+
 const app = express();
+const PORT = process.env.PORT || 10000;
 
-app.get('/:url(*)', async (req, res) => {
-  const url = req.params.url;
+// Função para verificar extensão válida
+function isValidImageUrl(url) {
+  const validExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.svg', '.bmp', '.ico'];
+  return validExtensions.some(ext => url.toLowerCase().includes(ext));
+}
 
+app.get('/:url', async (req, res) => {
   try {
-    const decodedUrl = decodeURIComponent(url);
-    const response = await fetch(decodedUrl);
+    const targetUrl = decodeURIComponent(req.params.url);
 
-    if (!response.ok) {
-      return res.status(response.status).send(`Error fetching image: ${response.statusText}`);
+    if (!isValidImageUrl(targetUrl)) {
+      return res.status(400).send('Invalid or unsupported image extension.');
     }
 
-    // Copia os headers da imagem original
-    res.setHeader('Content-Type', response.headers.get('content-type'));
-    const buffer = await response.buffer();
-    res.send(buffer);
+    // Primeiro, tenta obter apenas os headers
+    const headRes = await fetch(targetUrl, { method: 'HEAD' });
 
+    if (!headRes.ok) {
+      return res.status(400).send('Could not fetch image headers.');
+    }
+
+    const contentLength = headRes.headers.get('content-length');
+    const maxSizeBytes = 4 * 1024 * 1024; // 4 MB
+
+    if (contentLength && parseInt(contentLength) > maxSizeBytes) {
+      return res.status(400).send('Image too large to proxy.');
+    }
+
+    // Agora, faz o fetch real da imagem
+    const imageRes = await fetch(targetUrl);
+
+    res.setHeader('Content-Type', imageRes.headers.get('content-type'));
+    imageRes.body.pipe(res);
   } catch (err) {
-    res.status(500).send(`Proxy error: ${err.message}`);
+    console.error(err);
+    res.status(500).send('Proxy error: ' + err.message);
   }
 });
 
-const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => {
   console.log(`Image proxy server running on port ${PORT}`);
 });
