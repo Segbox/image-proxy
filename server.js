@@ -2,24 +2,24 @@ const express = require('express');
 const fetch = require('node-fetch');
 const app = express();
 
-app.get('/:url', async (req, res) => {
+app.get('/:url(*)', async (req, res) => {
+  const url = req.params.url;
+
   try {
-    const imageUrl = decodeURIComponent(req.params.url);
-    const response = await fetch(imageUrl);
+    const decodedUrl = decodeURIComponent(url);
+    const response = await fetch(decodedUrl);
 
     if (!response.ok) {
-      return res.status(500).send('Failed to fetch image');
+      return res.status(response.status).send(`Error fetching image: ${response.statusText}`);
     }
 
-    // Pega o tipo da imagem original e repassa
-    const contentType = response.headers.get('content-type');
-    res.set('Content-Type', contentType);
+    // Copia os headers da imagem original
+    res.setHeader('Content-Type', response.headers.get('content-type'));
+    const buffer = await response.buffer();
+    res.send(buffer);
 
-    // Transmite a imagem como stream
-    response.body.pipe(res);
-  } catch (error) {
-    console.error('Erro ao carregar imagem:', error);
-    res.status(500).send('Erro ao carregar imagem');
+  } catch (err) {
+    res.status(500).send(`Proxy error: ${err.message}`);
   }
 });
 
