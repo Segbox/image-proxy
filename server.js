@@ -1,48 +1,38 @@
+// server.js
 const express = require('express');
 const fetch = require('node-fetch');
-
 const app = express();
-const PORT = process.env.PORT || 10000;
+const PORT = process.env.PORT || 3000;
 
-// Função para verificar extensão válida
-function isValidImageUrl(url) {
-  const validExtensions = ['.jpg', '.jpeg', '.png', '.webp', '.svg', '.bmp', '.ico'];
-  return validExtensions.some(ext => url.toLowerCase().includes(ext));
-}
-
-app.get('/:url', async (req, res) => {
+app.get('/:encodedUrl', async (req, res) => {
   try {
-    const targetUrl = decodeURIComponent(req.params.url);
+    const encodedUrl = req.params.encodedUrl;
+    const targetUrl = decodeURIComponent(encodedUrl);
 
-    if (!isValidImageUrl(targetUrl)) {
-      return res.status(400).send('Invalid or unsupported image extension.');
+    // Impede redirecionar para ele mesmo (evita loop de proxy)
+    if (targetUrl.includes('image-proxy-x6i2.onrender.com')) {
+      return res.status(400).send('Erro: URL já está sendo processada pelo proxy.');
     }
 
-    // Primeiro, tenta obter apenas os headers
-    const headRes = await fetch(targetUrl, { method: 'HEAD' });
+    const response = await fetch(targetUrl, {
+      timeout: 10000, // 10 segundos
+    });
 
-    if (!headRes.ok) {
-      return res.status(400).send('Could not fetch image headers.');
+    // Verifica se é uma imagem válida
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.startsWith('image/')) {
+      return res.status(400).send(`Unsupported content type: ${contentType}`);
     }
 
-    const contentLength = headRes.headers.get('content-length');
-    const maxSizeBytes = 4 * 1024 * 1024; // 4 MB
-
-    if (contentLength && parseInt(contentLength) > maxSizeBytes) {
-      return res.status(400).send('Image too large to proxy.');
-    }
-
-    // Agora, faz o fetch real da imagem
-    const imageRes = await fetch(targetUrl);
-
-    res.setHeader('Content-Type', imageRes.headers.get('content-type'));
-    imageRes.body.pipe(res);
+    // Transfere a imagem
+    res.setHeader('Content-Type', contentType);
+    response.body.pipe(res);
   } catch (err) {
-    console.error(err);
-    res.status(500).send('Proxy error: ' + err.message);
+    console.error('Erro ao buscar imagem:', err.message);
+    res.status(500).send('Erro ao buscar imagem. Verifique se a URL está correta.');
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`Image proxy server running on port ${PORT}`);
+  console.log(`Proxy rodando na porta ${PORT}`);
 });
